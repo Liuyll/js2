@@ -1,5 +1,5 @@
-import { Function } from 'estree'
-import {Variable} from './base/variable'
+import {Variable, VariableKind} from './base/variable'
+import { globals } from './global'
 
 enum SET_OPE_CODE {
     SET_CONST,
@@ -7,17 +7,25 @@ enum SET_OPE_CODE {
     SET_SUCCESS
 }
 
+enum SCOPE_TYPE {
+    PROGRAM
+}
 class Scope {
     parent: Scope | null
     members: object
-    $this: object
+    $this: Scope
+    scopeName: SCOPE_TYPE
 
-    constructor(parent ?: Scope) {
+    constructor(parent ?: Scope, global ?: object, scopeName ?: SCOPE_TYPE) {
         this.parent = parent
         this.members = {}
+        if(global) {
+            this.parent = globalScopeFactory(global)
+        }
+        this.scopeName = scopeName
     }
 
-    addMembers(tag: string, member: Variable) {
+    addMember(tag: string, member: Variable) {
         this.members[tag] = member
     }
 
@@ -29,21 +37,22 @@ class Scope {
     set(tag, val): SET_OPE_CODE {
         const variable = this.find(tag)
         if(!variable) return SET_OPE_CODE.VARIABLE_NOT_FOUND
-        if(variable.kind === 'const') return SET_OPE_CODE.SET_CONST
-        variable.value = val
+        if(variable.kind === VariableKind.Const) return SET_OPE_CODE.SET_CONST
+        variable.set(val)
         return SET_OPE_CODE.SET_SUCCESS
-    }
-
-    setNativeCall(natives: object) {
-        Object.entries(natives).forEach(([tag, native]: [string, Function]) => {
-            this.members[tag] = new Variable('native', this, native)
-        })
     }
 }
 
-const globalScope = new Scope()
+const globalScopeFactory = (global: Object = {}) => {
+    const globalScope = new Scope(null)
+    Object.entries(globals).forEach(([n, v]) => globalScope.addMember(n, new Variable(VariableKind.Native, n, globalScope, v)))
+    typeof global === 'object' && Object.entries(global).forEach(([n, v]) => {
+        globalScope.addMember(n,  new Variable(VariableKind.Native, n, globalScope, v))
+    })
+    return globalScope
+}
 
 export {
     Scope,
-    globalScope
+    SCOPE_TYPE
 }
