@@ -1,6 +1,6 @@
 import 'mocha'
 
-import { expect } from 'chai';
+import { expect } from 'chai'
 import { parseAST } from '../../src'
 
 describe('MemberExpression Test', () => {
@@ -20,7 +20,7 @@ describe('MemberExpression Test', () => {
         }
         export default a['b']
     `
-    expect(parseAST(testCode)).to.be.equal(1)
+        expect(parseAST(testCode)).to.be.equal(1)
     })
 
     it('dot get value', () => {
@@ -30,6 +30,6 @@ describe('MemberExpression Test', () => {
         }
         export default a.b
     `
-    expect(parseAST(testCode)).to.be.equal(1)
+        expect(parseAST(testCode)).to.be.equal(1)
     })
 })

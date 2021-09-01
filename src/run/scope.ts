@@ -1,4 +1,4 @@
-import {Variable, VariableKind} from './base/variable'
+import { Variable, VariableKind } from './base/variable'
 import { globals } from './global'
 
 enum SET_OPE_CODE {
@@ -8,9 +8,10 @@ enum SET_OPE_CODE {
 }
 
 enum SCOPE_TYPE {
-    PROGRAM,
+    PROGRAM = 1,
     FUNCTION,
-    BLOCK
+    BLOCK,
+    FOR
 }
 class Scope {
     parent: Scope | null
@@ -18,13 +19,17 @@ class Scope {
     $this: Scope
     scopeType: SCOPE_TYPE
 
-    constructor(parent ?: Scope, global ?: object, scopeType ?: SCOPE_TYPE) {
+    constructor(parent: Scope)
+    constructor(parent: Scope, scopeType: SCOPE_TYPE)
+    constructor(parent: Scope, global: boolean | object)
+    constructor(parent: Scope, global: boolean | object, scopeType: SCOPE_TYPE)
+    constructor(parent: Scope, global ?: object | SCOPE_TYPE | boolean, scopeType ?: SCOPE_TYPE) {
         this.parent = parent
         this.members = {}
         if(global) {
-            this.parent = globalScopeFactory(global)
-        }
-        this.scopeType = scopeType
+            if(global === true || typeof global === 'object') this.parent = globalScopeFactory(global)
+            else this.scopeType = global
+        } else this.scopeType = scopeType
     }
 
     addMember(tag: string, member: Variable) {
@@ -47,6 +52,7 @@ class Scope {
 
 const globalScopeFactory = (global: Object = {}) => {
     const globalScope = new Scope(null)
+    if(global === true) global = {}
     Object.entries(globals).forEach(([n, v]) => globalScope.addMember(n, new Variable(VariableKind.Native, n, globalScope, v)))
     typeof global === 'object' && Object.entries(global).forEach(([n, v]) => {
         globalScope.addMember(n,  new Variable(VariableKind.Native, n, globalScope, v))

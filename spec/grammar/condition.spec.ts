@@ -1,6 +1,6 @@
 import 'mocha'
 
-import { expect } from 'chai';
+import { expect } from 'chai'
 import { parseAST } from '../../src'
 
 describe('Condition Test', () => {
@@ -60,7 +60,7 @@ describe('Condition Test', () => {
         }
         export default b
     `
-    expect(parseAST(testCode)).to.be.equal(5)
+        expect(parseAST(testCode)).to.be.equal(5)
     })
 
     it('only execute one branch', () => {
@@ -86,6 +86,6 @@ describe('Condition Test', () => {
         if(a === 10) b = 5
         export default b
     `
-    expect(parseAST(testCode)).to.be.equal(5)
+        expect(parseAST(testCode)).to.be.equal(5)
     })
 })

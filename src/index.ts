@@ -1,8 +1,8 @@
-import * as ESTree from 'estree';
+import * as ESTree from 'estree'
 import * as acorn from "acorn"
 import { eval2 } from "./run/eval2"
 import { Scope, SCOPE_TYPE } from "./run/scope"
-import require2 from './module/require';
+import require2 from './module/require'
 
 const acornOptions = {
     ecmaVersion: 10 as 10,
@@ -40,10 +40,9 @@ const parseAST: IParseAST = (code: string, global : object = {}, scope: Scope | 
 }
 
 console.log(parseAST(`
-function test() {
-    return 1
+for(let i = 0; i < 2; i++) {
+    console.log(i)
 }
-export default test()
 `))
 
 export {

@@ -1,10 +1,10 @@
 import * as ESTree from 'estree'
-import { Variable, VariableKind } from "./base/variable";
-import { getVal, isCallDirectly, isRecursiveMember, isVariable, transformStringTypeToEngineType, assignCallArguments, isNative } from './helper';
-import { FunctionArguments, IEvalExtraArguments, IEvalMap, IEvalMapExtra } from './interface';
-import { Scope, SCOPE_TYPE } from "./scope";
+import { Variable, VariableKind } from "./base/variable"
+import { getVal, isCallDirectly, isRecursiveMember, isVariable, transformStringTypeToEngineType, assignCallArguments, isNative } from './helper'
+import { FunctionArguments, IEvalExtraArguments, IEvalMap, IEvalMapExtra } from './interface'
+import { Scope, SCOPE_TYPE } from "./scope"
 import shallowCopy from 'shallow-copy'
-import { funcStack } from './base/stack';
+import { funcStack } from './base/stack'
 
 enum EVAL_OPE_COPE {
     
@@ -56,7 +56,7 @@ const evalOperateMap = {
         if(variable?.kind === VariableKind.Const) throw Error(`Function declaration conflict key: ${node.id.name}`)
         
         const runScope = new Scope(scope)
-        const arguments2:FunctionArguments = {length: node.params.length}
+        const arguments2:FunctionArguments = { length: node.params.length }
         node.params.reduce((sum, param, idx) => {
             if(isVariable(param)) sum[idx] = new Variable(VariableKind.Let, param.name, runScope, undefined)
             // TODO: rest
@@ -89,7 +89,7 @@ const evalOperateMap = {
      */
     'ArrowFunctionExpression': (node: ESTree.ArrowFunctionExpression, scope: Scope) => {
         const runScope = new Scope(scope)
-        const arguments2:FunctionArguments = {length: node.params.length}
+        const arguments2:FunctionArguments = { length: node.params.length }
         node.params.reduce((sum, param, idx) => {
             if(isVariable(param)) sum[idx] = new Variable(VariableKind.Let, param.name, runScope, undefined)
             // TODO: rest
@@ -174,7 +174,7 @@ const evalOperateMap = {
      */
     'FunctionExpression': (node: ESTree.FunctionExpression, scope: Scope) => {
         const runScope = new Scope(scope)
-        const arguments2:FunctionArguments = {length: node.params.length}
+        const arguments2:FunctionArguments = { length: node.params.length }
         node.params.reduce((sum, param, idx) => {
             if(isVariable(param)) sum[idx] = new Variable(VariableKind.Let, param.name, runScope, undefined)
             // TODO: rest
@@ -236,6 +236,19 @@ const evalOperateMap = {
             return body.value.call({}, ...argumentsCopy)
         }
     },
+    'UpdateExpression': (node: ESTree.UpdateExpression, scope: Scope) => {
+        let variable = eval2(node.argument, scope, false, true)
+        const { operator } = node
+        const isAdd = operator === '++'
+        if(!node.prefix) {
+            let temp = variable.value
+            variable.set(isAdd ? variable.value + 1 : variable.value - 1)
+            return temp
+        } else {
+            variable.set(isAdd ? variable.value + 1 : variable.value - 1)
+            return variable.value
+        }
+    },
     'BlockStatement': (node: ESTree.BlockStatement, scope: Scope, isFunction: boolean = false) => {
         const blockScope = new Scope(scope, null, isFunction ? SCOPE_TYPE.FUNCTION : SCOPE_TYPE.BLOCK)
         let _return
@@ -252,8 +265,15 @@ const evalOperateMap = {
         return _return
     },
     'ForStatement': (node: ESTree.ForStatement, scope: Scope) => {
-        
-    },
+        let { init, test, update, body } = node
+        const forScope = new Scope(scope, SCOPE_TYPE.FOR)
+
+        eval2(init, forScope)
+        while(eval2(test, forScope)) {
+            eval2(body, forScope)
+            eval2(update, forScope)
+        }
+    },  
     'ReturnStatement': (node: ESTree.ReturnStatement, scope: Scope) => {
         if(node.argument === null) return funcStack.returnFunc(undefined)
         const ret = eval2<'Computed'>(node.argument, scope)
@@ -289,54 +309,58 @@ const evalOperateMap = {
         }
     },
     'LogicalExpression': (node: ESTree.LogicalExpression, scope: Scope) => {
-        const {left, operator, right} = node
+        const { left, operator, right } = node
         switch (operator) {
-            case '||':
-                return getVal(left, scope) || getVal(right, scope)
-            case '&&':
-                return getVal(left, scope) && getVal(right, scope)
+        case '||':
+            return getVal(left, scope) || getVal(right, scope)
+        case '&&':
+            return getVal(left, scope) && getVal(right, scope)
         }
     },
     'BinaryExpression': (node: ESTree.BinaryExpression, scope: Scope) => {
-        const {left, operator, right} = node
+        const { left, operator, right } = node
         let leftVal, rightVal
         switch (operator) {
-            case '+':
-                leftVal = getVal(left, scope)
-                if(typeof leftVal !== 'number' && typeof leftVal !== 'string') throw Error("binary expression left error")
-                rightVal = getVal(right, scope)
-                if(typeof rightVal !== 'number' && typeof rightVal !== 'string') throw Error("binary expression right error")
-                return (leftVal as number) + (rightVal as number)
-            case '-':
-                leftVal = getVal(left, scope)
-                if(typeof leftVal !== 'number' && typeof leftVal !== 'string') throw Error("binary expression left error")
-                rightVal = getVal(right, scope)
-                if(typeof rightVal !== 'number' && typeof rightVal !== 'string') throw Error("binary expression right error")
-                return (leftVal as number) - (rightVal as number)
-            case '/':
-                leftVal = getVal(left, scope)
-                if(typeof leftVal !== 'number') throw Error("binary expression left error")
-                rightVal = getVal(right, scope)
-                if(typeof rightVal !== 'number') throw Error("binary expression right error")
-                return (leftVal as number) / (rightVal as number)
-            case '*':
-                leftVal = getVal(left, scope)
-                if(typeof leftVal !== 'number') throw Error("binary expression left error")
-                rightVal = getVal(right, scope)
-                if(typeof rightVal !== 'number') throw Error("binary expression right error")
-                return (leftVal as number) * (rightVal as number)
-            case '===':
-                return getVal(left, scope) === getVal(right, scope)
-            case '==':
-                return getVal(left, scope) == getVal(right, scope)
-            default:
-                break;
+        case '+':
+            leftVal = getVal(left, scope)
+            if(typeof leftVal !== 'number' && typeof leftVal !== 'string') throw Error("binary expression left error")
+            rightVal = getVal(right, scope)
+            if(typeof rightVal !== 'number' && typeof rightVal !== 'string') throw Error("binary expression right error")
+            return (leftVal as number) + (rightVal as number)
+        case '-':
+            leftVal = getVal(left, scope)
+            if(typeof leftVal !== 'number' && typeof leftVal !== 'string') throw Error("binary expression left error")
+            rightVal = getVal(right, scope)
+            if(typeof rightVal !== 'number' && typeof rightVal !== 'string') throw Error("binary expression right error")
+            return (leftVal as number) - (rightVal as number)
+        case '/':
+            leftVal = getVal(left, scope)
+            if(typeof leftVal !== 'number') throw Error("binary expression left error")
+            rightVal = getVal(right, scope)
+            if(typeof rightVal !== 'number') throw Error("binary expression right error")
+            return (leftVal as number) / (rightVal as number)
+        case '*':
+            leftVal = getVal(left, scope)
+            if(typeof leftVal !== 'number') throw Error("binary expression left error")
+            rightVal = getVal(right, scope)
+            if(typeof rightVal !== 'number') throw Error("binary expression right error")
+            return (leftVal as number) * (rightVal as number)
+        case '===':
+            return getVal(left, scope) === getVal(right, scope)
+        case '==':
+            return getVal(left, scope) == getVal(right, scope)
+        case '<':
+            return getVal(left ,scope) < getVal(right, scope)
+        case '>':
+            return getVal(left, scope) > getVal(right, scope)
+        default:
+            break
         }
     },
     /**
      * @param isDirect boolean 是否直接取值，eg:a.b 
      */
-    'Identifier': (node: ESTree.Identifier, scope: Scope, isDirect: boolean, returnVariable: boolean) => {
+    'Identifier': (node: ESTree.Identifier, scope: Scope, isDirect: boolean, returnVariable: boolean): Variable | any => {
         if(isDirect) return node.name
         const variable = scope.find(node.name)
         if(!variable) throw Error(`Identifier key:${node.name} is not exist`)

@@ -1,6 +1,6 @@
 import 'mocha'
 
-import { expect } from 'chai';
+import { expect } from 'chai'
 import { parseAST } from '../../src'
 
 describe('Function Test', () => {
@@ -33,7 +33,7 @@ describe('Function Test', () => {
             }
             setTimeout(test, 0)
         `
-        parseAST(testCode, {done: done})
+        parseAST(testCode, { done: done })
     })
 
     it('function return', () => {
@@ -56,7 +56,7 @@ describe('Function Test', () => {
             }
             export default test()
         `
-        parseAST(testCode, {change})
+        parseAST(testCode, { change })
         expect(current).to.be.equal(1)
     })
 
@@ -76,7 +76,7 @@ describe('Function Test', () => {
             }
             export default test()
         `
-        parseAST(testCode, {change})
+        parseAST(testCode, { change })
         expect(current).to.be.equal(1)
     })
 
@@ -100,7 +100,7 @@ describe('Function Test', () => {
             }
             export default test()
         `
-        parseAST(testCode, {change})
+        parseAST(testCode, { change })
         expect(current).to.be.equal(1)
     })
 
