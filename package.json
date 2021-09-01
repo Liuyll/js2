@@ -3,8 +3,10 @@
   "version": "1.0.0",
   "description": "js-engine",
   "main": "index.js",
+  "source": "src/index.ts",
   "scripts": {
-    "test": "mocha -r ts-node/register spec/**/*.spec.ts"
+    "test": "mocha -r ts-node/register spec/**/*.spec.ts",
+    "build": "parcel build src/index.ts"
   },
   "author": "",
   "license": "ISC",
