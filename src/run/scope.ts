@@ -8,21 +8,23 @@ enum SET_OPE_CODE {
 }
 
 enum SCOPE_TYPE {
-    PROGRAM
+    PROGRAM,
+    FUNCTION,
+    BLOCK
 }
 class Scope {
     parent: Scope | null
     members: object
     $this: Scope
-    scopeName: SCOPE_TYPE
+    scopeType: SCOPE_TYPE
 
-    constructor(parent ?: Scope, global ?: object, scopeName ?: SCOPE_TYPE) {
+    constructor(parent ?: Scope, global ?: object, scopeType ?: SCOPE_TYPE) {
         this.parent = parent
         this.members = {}
         if(global) {
             this.parent = globalScopeFactory(global)
         }
-        this.scopeName = scopeName
+        this.scopeType = scopeType
     }
 
     addMember(tag: string, member: Variable) {
@@ -49,6 +51,7 @@ const globalScopeFactory = (global: Object = {}) => {
     typeof global === 'object' && Object.entries(global).forEach(([n, v]) => {
         globalScope.addMember(n,  new Variable(VariableKind.Native, n, globalScope, v))
     })
+    
     return globalScope
 }
 

@@ -2,8 +2,9 @@ import * as ESTree from 'estree'
 import { Variable, VariableKind } from "./base/variable";
 import { getVal, isCallDirectly, isRecursiveMember, isVariable, transformStringTypeToEngineType, assignCallArguments, isNative } from './helper';
 import { FunctionArguments, IEvalExtraArguments, IEvalMap, IEvalMapExtra } from './interface';
-import { Scope } from "./scope";
+import { Scope, SCOPE_TYPE } from "./scope";
 import shallowCopy from 'shallow-copy'
+import { funcStack } from './base/stack';
 
 enum EVAL_OPE_COPE {
     
@@ -27,6 +28,110 @@ const evalOperateMap = {
             scope.addMember(tag, _variable)
         })
         return variables
+    },
+    'ImportDeclaration': (node: ESTree.ImportDeclaration, scope: Scope) => {
+        let defaulted: string, named: {[idx: string]: string} = {}
+
+        node.specifiers.forEach(specify => {
+            if(specify.type === 'ImportDefaultSpecifier') {
+                defaulted = specify.local.name
+            } else if(specify.type === 'ImportSpecifier') {
+                named[specify.imported.name] = specify.local.name
+            }
+        })
+
+        const require2: (modulePath: string) => any = scope.find('__inner_require__').value
+        const ret = require2(node.source.value as string)
+
+        Object.entries(named).forEach(([imported, local]) => {
+            scope.addMember(local, ret[imported])
+        })
+        scope.addMember(defaulted, new Variable(VariableKind.Const, defaulted, scope, ret.default))
+    },
+    /**
+     * function() {}
+     */
+    'FunctionDeclaration': (node: ESTree.FunctionDeclaration, scope: Scope) => {
+        const variable = scope.find(node.id.name)
+        if(variable?.kind === VariableKind.Const) throw Error(`Function declaration conflict key: ${node.id.name}`)
+        
+        const runScope = new Scope(scope)
+        const arguments2:FunctionArguments = {length: node.params.length}
+        node.params.reduce((sum, param, idx) => {
+            if(isVariable(param)) sum[idx] = new Variable(VariableKind.Let, param.name, runScope, undefined)
+            // TODO: rest
+            return sum
+        }, arguments2)
+        runScope.addMember('arguments', new Variable(VariableKind.Const, 'arguments', runScope, arguments2))
+        
+        scope.addMember(
+            node.id.name, 
+            new Variable(VariableKind.Function, (node.id as ESTree.Identifier).name, runScope, function(...args) {
+                funcStack.addStack((node.id as ESTree.Identifier).name)
+
+                assignCallArguments(Array.from(runScope.find('arguments')!.value) as Variable[], args, runScope)
+                if(this instanceof Scope) runScope.$this = this
+                else {
+                    runScope.$this = Object.entries(this).reduce((scope, [key, cur]: [string, Variable]) => {
+                        scope.addMember(key, cur)
+                        return scope
+                    }, new Scope(null))
+                }
+
+                const ret = eval2(node.body, runScope, true)
+                funcStack.popStack()
+                return ret
+            })
+        )
+    },
+    /**
+     * const a = () => ...
+     */
+    'ArrowFunctionExpression': (node: ESTree.ArrowFunctionExpression, scope: Scope) => {
+        const runScope = new Scope(scope)
+        const arguments2:FunctionArguments = {length: node.params.length}
+        node.params.reduce((sum, param, idx) => {
+            if(isVariable(param)) sum[idx] = new Variable(VariableKind.Let, param.name, runScope, undefined)
+            // TODO: rest
+            return sum
+        }, arguments2)
+        runScope.addMember('arguments', new Variable(VariableKind.Const, 'arguments', runScope, arguments2))
+        
+        return function(...args) {
+            funcStack.addStack('anonymous')
+
+            assignCallArguments(Array.from(runScope.find('arguments')!.value) as Variable[], args, runScope)
+            runScope.$this = runScope
+            let ret
+            if(node.body.type === 'BlockStatement') ret = eval2<'BlockStatement'>(node.body, runScope, true)
+            else ret = eval2<'Computed'>(node.body, runScope)
+
+            funcStack.popStack()
+            return ret
+        }
+    },
+    /**
+     * @param isCall 是否是函数调用
+     */
+    'ExportNamedDeclaration': (node: ESTree.ExportNamedDeclaration, scope: Scope) => {
+        const _export: (name: string, value: Variable) => void = scope.find('__inner_export__').value
+        if(node.declaration) {
+            const variables = eval2(node.declaration, scope)
+            variables.forEach(([tag, variable]) => {
+                _export(tag, variable)
+            })
+        } else if(node.specifiers) {
+            node.specifiers.forEach(specify => {
+                _export(eval2<'Identifier', 'IdentifierNoComputed'>(specify.exported, scope, true), eval2<'Identifier'>(specify.exported, scope, false, true))
+            }) 
+        }
+    },
+    'ExportDefaultDeclaration': (node: ESTree.ExportDefaultDeclaration, scope: Scope) => {
+        // rootModule下不存在__inner_export__
+        const _export: (name: string, value: Variable) => void = scope.find('__inner_export__')?.value
+        const exportValue = eval2(node.declaration, scope)
+        _export && _export('default', exportValue)
+        return exportValue
     },
     'VariableDeclarator': (node: ESTree.VariableDeclarator, scope: Scope, kind: VariableKind): Variable => {
         const tag = (node.id as ESTree.Identifier).name
@@ -54,6 +159,19 @@ const evalOperateMap = {
             }
         }, {})
     },
+    'AssignmentExpression': (node: ESTree.AssignmentExpression, scope: Scope) => {
+        if(node.left.type === 'Identifier') {
+            let val: Variable
+            if((val = scope.find(node.left.name)!)) {
+                val.set(eval2(node.right, scope))
+            } else {
+                throw Error(`Error: Variable ${node.left.name} is not declaration`)
+            }
+        }
+    },
+    /**
+     * function a() {}
+     */
     'FunctionExpression': (node: ESTree.FunctionExpression, scope: Scope) => {
         const runScope = new Scope(scope)
         const arguments2:FunctionArguments = {length: node.params.length}
@@ -65,6 +183,8 @@ const evalOperateMap = {
         runScope.addMember('arguments', new Variable(VariableKind.Const, 'arguments', runScope, arguments2))
         
         return function(...args) {
+            funcStack.addStack((node.id as ESTree.Identifier).name)
+
             assignCallArguments(Array.from(runScope.find('arguments')!.value) as Variable[], args, runScope)
             if(this instanceof Scope) runScope.$this = this
             else {
@@ -73,50 +193,12 @@ const evalOperateMap = {
                     return scope
                 }, new Scope(null))
             }
-            return eval2(node.body, runScope)
+
+            const ret = eval2(node.body, runScope, true)
+            funcStack.popStack()
+            return ret
         }
     },
-    'AssignmentExpression': (node: ESTree.AssignmentExpression, scope: Scope) => {
-        if(node.left.type === 'Identifier') {
-            let val: Variable
-            if((val = scope.find(node.left.name)!)) {
-                val.set(eval2(node.right, scope))
-            } else {
-                throw Error(`Error: Variable ${node.left.name} is not declaration`)
-            }
-        }
-    },
-    'FunctionDeclaration': (node: ESTree.FunctionDeclaration, scope: Scope) => {
-        const variable = scope.find(node.id.name)
-        if(variable?.kind === VariableKind.Const) throw Error(`Function declaration conflict key: ${node.id.name}`)
-        
-        const runScope = new Scope(scope)
-        const arguments2:FunctionArguments = {length: node.params.length}
-        node.params.reduce((sum, param, idx) => {
-            if(isVariable(param)) sum[idx] = new Variable(VariableKind.Let, param.name, runScope, undefined)
-            // TODO: rest
-            return sum
-        }, arguments2)
-        runScope.addMember('arguments', new Variable(VariableKind.Const, 'arguments', runScope, arguments2))
-        
-        scope.addMember(
-            node.id.name, 
-            new Variable(VariableKind.Function, (node.id as ESTree.Identifier).name, runScope, function(...args) {
-                assignCallArguments(Array.from(runScope.find('arguments')!.value) as Variable[], args, runScope)
-                if(this instanceof Scope) runScope.$this = this
-                else {
-                    runScope.$this = Object.entries(this).reduce((scope, [key, cur]: [string, Variable]) => {
-                        scope.addMember(key, cur)
-                        return scope
-                    }, new Scope(null))
-                }
-                return eval2(node.body, runScope)
-            })
-        )
-    },
-    /**
-     * @param isCall 是否是函数调用
-     */
     'MemberExpression': <E>(node: ESTree.MemberExpression, scope: Scope, isCall = false): E extends IEvalMapExtra['MemberExpressionIsCall'] ? [CallObject: Variable, Property: Variable] : any => {
         let wrap: Variable
         if(isRecursiveMember(node.object)) wrap = eval2(node.object, scope)
@@ -135,7 +217,6 @@ const evalOperateMap = {
         return value
     },
     'CallExpression': (node: ESTree.CallExpression, scope: Scope) => {
-        const runScope = new Scope(scope)
         const argumentsCopy = node.arguments.map(argument => shallowCopy(eval2(argument, scope)))
         const _callee = node.callee
         if(isRecursiveMember(_callee)) {
@@ -155,78 +236,57 @@ const evalOperateMap = {
             return body.value.call({}, ...argumentsCopy)
         }
     },
-    'ArrowFunctionExpression': (node: ESTree.ArrowFunctionExpression, scope: Scope) => {
-        const runScope = new Scope(scope)
-        const arguments2:FunctionArguments = {length: node.params.length}
-        node.params.reduce((sum, param, idx) => {
-            if(isVariable(param)) sum[idx] = new Variable(VariableKind.Let, param.name, runScope, undefined)
-            // TODO: rest
-            return sum
-        }, arguments2)
-        runScope.addMember('arguments', new Variable(VariableKind.Const, 'arguments', runScope, arguments2))
-        
-        return function(...args) {
-            assignCallArguments(Array.from(runScope.find('arguments')!.value) as Variable[], args, runScope)
-            runScope.$this = runScope
-            return eval2(node.body, runScope)
-        }
-    },
-    'ImportDeclaration': (node: ESTree.ImportDeclaration, scope: Scope) => {
-        let defaulted: string, named: {[idx: string]: string} = {}
-
-        node.specifiers.forEach(specify => {
-            if(specify.type === 'ImportDefaultSpecifier') {
-                defaulted = specify.local.name
-            } else if(specify.type === 'ImportSpecifier') {
-                named[specify.imported.name] = specify.local.name
-            }
-        })
-
-        const require2: (modulePath: string) => any = scope.find('__inner_require__').value
-        const ret = require2(node.source.value as string)
-
-        Object.entries(named).forEach(([imported, local]) => {
-            scope.addMember(local, ret[imported])
-        })
-        scope.addMember(defaulted, new Variable(VariableKind.Const, defaulted, scope, ret.default))
-    },
-    'ExportNamedDeclaration': (node: ESTree.ExportNamedDeclaration, scope: Scope) => {
-        const _export: (name: string, value: Variable) => void = scope.find('__inner_export__').value
-        if(node.declaration) {
-            const variables = eval2(node.declaration, scope)
-            variables.forEach(([tag, variable]) => {
-                _export(tag, variable)
-            })
-        } else if(node.specifiers) {
-            node.specifiers.forEach(specify => {
-                _export(eval2<'Identifier', 'IdentifierNoComputed'>(specify.exported, scope, true), eval2<'Identifier'>(specify.exported, scope, false, true))
-            }) 
-        }
-    },
-    'ExportDefaultDeclaration': (node: ESTree.ExportDefaultDeclaration, scope: Scope) => {
-        // rootModule下不存在__inner_export__
-        const _export: (name: string, value: Variable) => void = scope.find('__inner_export__')?.value
-        const exportValue = eval2(node.declaration, scope)
-        _export && _export('default', exportValue)
-        return exportValue
-    },
-    'BlockStatement': (node: ESTree.BlockStatement, scope: Scope) => {
+    'BlockStatement': (node: ESTree.BlockStatement, scope: Scope, isFunction: boolean = false) => {
+        const blockScope = new Scope(scope, null, isFunction ? SCOPE_TYPE.FUNCTION : SCOPE_TYPE.BLOCK)
         let _return
         let executeStatement = node.body
-        executeStatement.forEach(statement => {
-            if(statement.type === 'ReturnStatement') _return = eval2(statement, scope)
-            return eval2(statement, scope)
-        })
+
+        for(let statement of executeStatement) {
+            eval2(statement, blockScope)
+            if(funcStack.isReturn) {
+                _return = funcStack.getCurrentStack()[2]
+                break
+            } 
+        }
         
         return _return
     },
+    'ForStatement': (node: ESTree.ForStatement, scope: Scope) => {
+        
+    },
     'ReturnStatement': (node: ESTree.ReturnStatement, scope: Scope) => {
-        return eval2(node.argument, scope)
+        if(node.argument === null) return funcStack.returnFunc(undefined)
+        const ret = eval2<'Computed'>(node.argument, scope)
+        funcStack.returnFunc(ret)
     },
     'IfStatement': (node: ESTree.IfStatement, scope: Scope) => {
         const isExec = eval2<'BinaryExpression'>(node.test, scope)
         if(isExec) eval2(node.consequent, scope)
         else if(node.alternate) eval2(node.alternate, scope)
+    },
+    'SwitchStatement': (node: ESTree.SwitchStatement, scope: Scope) => {
+        const discriminant = eval2(node.discriminant, scope)
+        let hasBreak: boolean | null = null
+        for(let test of node.cases) {
+            if(hasBreak) break
+            if(hasBreak === false) {
+                for(let statement of test.consequent) {
+                    if(statement.type === 'BreakStatement') {
+                        hasBreak = true
+                        break
+                    } else eval2(statement, scope)
+                }
+            }
+            else if(eval2(test.test, scope) === discriminant) {
+                hasBreak = false
+                for(let statement of test.consequent) {
+                    if(statement.type === 'BreakStatement') {
+                        hasBreak = true
+                        break
+                    } else eval2(statement, scope)
+                }
+            }
+        }
     },
     'LogicalExpression': (node: ESTree.LogicalExpression, scope: Scope) => {
         const {left, operator, right} = node
@@ -292,6 +352,7 @@ const evalOperateMap = {
 }
 
 const eval2 = <T extends keyof IEvalMap = 'any', E extends keyof IEvalMapExtra = 'any', P extends keyof IEvalExtraArguments = 'any'>(ast: ESTree.Node, scope: Scope, ...extra: IEvalExtraArguments[P][]): IEvalMap<E>[T] => {
+    if(funcStack.isReturn) return
     return evalOperateMap[ast.type](ast, scope, ...extra)
 }
 

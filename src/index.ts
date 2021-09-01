@@ -40,10 +40,11 @@ const parseAST: IParseAST = (code: string, global : object = {}, scope: Scope | 
 }
 
 console.log(parseAST(`
-    done()
-`, {
-    done: () => console.log('qwe')
-}))
+function test() {
+    return 1
+}
+export default test()
+`))
 
 export {
     parseAST

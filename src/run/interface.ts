@@ -1,6 +1,4 @@
 import { Variable, VariableKind } from "./base/variable";
-import * as ESTree from 'estree'
-import { Scope } from "./scope"
 
 type FunctionArguments = {
     length: number
@@ -18,11 +16,15 @@ interface IEvalMap<T = any> {
     'Identifier': T extends IEvalMapExtra['IdentifierNoComputed'] ? string : Variable
     'BinaryExpression': any
     'VariableDeclarator': Variable
+    'BlockStatement': any
     'any': any 
+    'Literal': any
+    'Computed': any
 }
 
 interface IEvalExtraArguments {
     'VariableDeclarator': VariableKind
+    'BlockStatement': boolean
     'any': any
 }
 
@@ -32,9 +34,3 @@ export {
     IEvalMapExtra,
     IEvalExtraArguments
 }
-
-// type test = 'qwe' | 'zxc'
-
-// type a<T> = T extends Extract<test, infer oo> ? oo : boolean
-
-// const b: a<'qwe'>
