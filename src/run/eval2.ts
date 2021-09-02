@@ -19,15 +19,10 @@ const evalOperateMap = {
         })
         return exports
     },
-    'VariableDeclaration': (node: ESTree.VariableDeclaration, scope: Scope): [string, Variable][] => {
-        let variables = []
+    'VariableDeclaration': (node: ESTree.VariableDeclaration, scope: Scope) => {
         node.declarations.forEach(variable => {
-            const _variable = eval2<'VariableDeclarator', 'any', 'VariableDeclarator'>(variable, scope, transformStringTypeToEngineType(node.kind))
-            const tag = (variable.id as ESTree.Identifier).name
-            variables.push([tag, _variable])
-            scope.addMember(tag, _variable)
+            eval2<'VariableDeclarator', 'any', 'VariableDeclarator'>(variable, scope, transformStringTypeToEngineType(node.kind))
         })
-        return variables
     },
     'ImportDeclaration': (node: ESTree.ImportDeclaration, scope: Scope) => {
         let defaulted: string, named: {[idx: string]: string} = {}
@@ -133,9 +128,13 @@ const evalOperateMap = {
         _export && _export('default', exportValue)
         return exportValue
     },
-    'VariableDeclarator': (node: ESTree.VariableDeclarator, scope: Scope, kind: VariableKind): Variable => {
+    'VariableDeclarator': (node: ESTree.VariableDeclarator, scope: Scope, kind: VariableKind) => {
         const tag = (node.id as ESTree.Identifier).name
-        return new Variable(kind, tag, scope, node.init ? eval2(node.init, scope) : undefined)
+        const _variable = new Variable(kind, tag, scope, node.init ? eval2(node.init, scope) : undefined)
+        if(kind === VariableKind.Var) {
+            while(scope.scopeType !== SCOPE_TYPE.FUNCTION && scope.scopeType !== SCOPE_TYPE.PROGRAM) scope = scope.parent
+            scope.addMember(tag, _variable)
+        } else scope.addMember(tag, _variable)
     },
     'NewExpression': (node: ESTree.NewExpression, scope: Scope) => {
         const constructor = eval2(node.callee, scope, false, true)
@@ -306,6 +305,18 @@ const evalOperateMap = {
                     } else eval2(statement, scope)
                 }
             }
+        }
+    },
+    'UnaryExpression': (node: ESTree.UnaryExpression, scope: Scope) => {
+        switch (node.operator) {
+        case 'typeof': {
+            try {
+                const val = eval2(node.argument, scope)
+                return typeof val
+            } catch(err) {
+                return 'undefined'
+            }
+        }
         }
     },
     'LogicalExpression': (node: ESTree.LogicalExpression, scope: Scope) => {

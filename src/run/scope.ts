@@ -27,7 +27,10 @@ class Scope {
         this.parent = parent
         this.members = {}
         if(global) {
-            if(global === true || typeof global === 'object') this.parent = globalScopeFactory(global)
+            if(global === true || typeof global === 'object') {
+                this.parent = globalScopeFactory(global)
+                this.scopeType = scopeType
+            }
             else this.scopeType = global
         } else this.scopeType = scopeType
     }

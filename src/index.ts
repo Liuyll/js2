@@ -39,11 +39,10 @@ const parseAST: IParseAST = (code: string, global : object = {}, scope: Scope | 
     return eval2(ast, scope)
 }
 
-// console.log(parseAST(`
-// for(let i = 0; i < 2; i++) {
-//     console.log(i)
-// }
-// `))
+console.log(parseAST(`
+for(let i = 0; i < 10; i++) var a = i
+export default a
+`))
 
 export {
     parseAST
