@@ -4,7 +4,6 @@ import { expect } from 'chai'
 import { parseAST } from '../../src'
 
 describe('Condition Test', () => {
-    // a['b']
     it('if', () => {
         const testCode = `
             let a = 10

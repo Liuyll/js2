@@ -1,11 +1,12 @@
 import * as ESTree from 'estree'
-import * as acorn from "acorn"
+import { Parser } from "acorn"
 import { eval2 } from "./run/eval2"
 import { Scope, SCOPE_TYPE } from "./run/scope"
 import require2 from './module/require'
+import classFields from 'acorn-class-fields'
 
 const acornOptions = {
-    ecmaVersion: 10 as 10,
+    ecmaVersion: 2020 as 2020,
     sourceType: 'module' as 'module',
 }
 
@@ -35,13 +36,11 @@ const parseAST: IParseAST = (code: string, global : object = {}, scope: Scope | 
             SCOPE_TYPE.PROGRAM
         )
     }
-    const ast = acorn.parse(code, acornOptions) as ESTree.Node
+    const ast = Parser.extend(classFields).parse(code, acornOptions) as ESTree.Node
     return eval2(ast, scope)
 }
 
 console.log(parseAST(`
-for(let i = 0; i < 10; i++) var a = i
-export default a
 `))
 
 export {

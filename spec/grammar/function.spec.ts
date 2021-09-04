@@ -4,7 +4,6 @@ import { expect } from 'chai'
 import { parseAST } from '../../src'
 
 describe('Function Test', () => {
-    // a['b']
     it('call', () => {
         const testCode = `
             function test() {

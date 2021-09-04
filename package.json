@@ -12,6 +12,7 @@
   "license": "ISC",
   "dependencies": {
     "acorn": "^8.4.1",
+    "acorn-class-fields": "^1.0.0",
     "shallow-copy": "0.0.1"
   },
   "devDependencies": {

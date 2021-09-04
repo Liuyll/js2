@@ -29,12 +29,13 @@ class Variable {
     property(key: string) {
         if(this.kind === VariableKind.Native) return this.value[key]
         if(this.value == null) throw Error(`variable '${this.name}' find property error. This value is ${this.value}!`)
-        if(Object.prototype.toString.call(this.value) === '[object Object]') return this.value[key].value
         if(Object.prototype.toString.call(this.value) === '[object Array]') {
             if(typeof key === 'number') return this.value[key].value
             else if(typeof key === 'string' && !isNaN(Number(key)) && Number(key) < 4294967296) return this.value[Number(key)].value
-        } 
-        return this.instanceValue[key].value
+        }
+        if(Object.prototype.toString.call(this.value) === '[object Object]') return this.value[key]
+        return this.instanceValue
+
     }
 
     set(val: any) {

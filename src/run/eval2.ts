@@ -5,6 +5,7 @@ import { FunctionArguments, IEvalExtraArguments, IEvalMap, IEvalMapExtra } from 
 import { Scope, SCOPE_TYPE } from "./scope"
 import shallowCopy from 'shallow-copy'
 import { funcStack } from './base/stack'
+import { binaryExpressionStrict } from './helper/strict'
 
 enum EVAL_OPE_COPE {
     
@@ -128,9 +129,31 @@ const evalOperateMap = {
         _export && _export('default', exportValue)
         return exportValue
     },
+    'ClassDeclaration': (node: ESTree.ClassDeclaration, scope: Scope) => {
+        const body = node.body.body
+        let properties: [string, any][] = []
+        const methods: {[key: string]: Function} = {}
+        body.forEach(p => {
+            if(p.type === 'PropertyDefinition') properties.push([eval2<'Identifier', 'IdentifierNoComputed'>(p.key, scope, true), eval2(p.value, scope)])
+            else methods[eval2<'Identifier', 'IdentifierNoComputed'>(p.key, scope, true)] = eval2(p.value, scope)
+        })
+        const transformed = function() {
+            const _this = this
+            properties.forEach(([name, property]) => {
+                _this[name] = property
+            })
+        }
+        transformed.prototype = {
+            constructor: transformed,
+            ...methods
+        }
+
+        const tag = eval2(node.id, scope, true)
+        scope.addMember(tag, new Variable(VariableKind.Function, tag, scope, transformed))
+    },
     'VariableDeclarator': (node: ESTree.VariableDeclarator, scope: Scope, kind: VariableKind) => {
         const tag = (node.id as ESTree.Identifier).name
-        const _variable = new Variable(kind, tag, scope, node.init ? eval2(node.init, scope) : undefined)
+        const _variable = new Variable(node.init?.type === 'NewExpression' ? VariableKind.Native : kind, tag, scope, node.init ? eval2(node.init, scope) : undefined)
         if(kind === VariableKind.Var) {
             while(scope.scopeType !== SCOPE_TYPE.FUNCTION && scope.scopeType !== SCOPE_TYPE.PROGRAM) scope = scope.parent
             scope.addMember(tag, _variable)
@@ -138,12 +161,7 @@ const evalOperateMap = {
     },
     'NewExpression': (node: ESTree.NewExpression, scope: Scope) => {
         const constructor = eval2(node.callee, scope, false, true)
-        if(constructor.kind === VariableKind.Native) {
-            return new constructor.value(...Array.from(node.arguments).map(a => eval2(a, scope)))
-        }
-        let scope2 = Object.create(constructor.prototype)
-        constructor.call(scope2)
-        return scope2
+        return new constructor.value(...Array.from(node.arguments).map(a => eval2(a, scope)))
     },
     'ArrayExpression': (node: ESTree.ArrayExpression, scope: Scope) => {
         return node.elements.map((element, idx) => new Variable(VariableKind.Let, String(idx), scope, eval2(element, scope)))
@@ -182,7 +200,7 @@ const evalOperateMap = {
         runScope.addMember('arguments', new Variable(VariableKind.Const, 'arguments', runScope, arguments2))
         
         return function(...args) {
-            funcStack.addStack((node.id as ESTree.Identifier).name)
+            funcStack.addStack((node.id as ESTree.Identifier)?.name) // 匿名函数没name
 
             assignCallArguments(Array.from(runScope.find('arguments')!.value) as Variable[], args, runScope)
             if(this instanceof Scope) runScope.$this = this
@@ -208,12 +226,15 @@ const evalOperateMap = {
         }
         else if(node.object.type === 'ThisExpression') {
             return scope.$this.find((node.property as ESTree.Identifier).name).value
-        }
+        } 
+        else if(node.object.type === 'CallExpression' || node.object.type === 'NewExpression') {
+            wrap = eval2(node.object, scope)
+        } 
 
         const property = eval2<'Identifier', 'IdentifierNoComputed'>(node.property, scope, !node.computed)
-        const value = wrap.property(property)
+        const value = wrap._isVariable ? wrap.property(property) : wrap[property]
         if(isCall) return [wrap, value] as any
-        return value
+        return value?._isVariable ? value.value : value
     },
     'CallExpression': (node: ESTree.CallExpression, scope: Scope) => {
         const argumentsCopy = node.arguments.map(argument => shallowCopy(eval2(argument, scope)))
@@ -225,7 +246,7 @@ const evalOperateMap = {
                 return fn.value.call(call.value, ...argumentsCopy)
             } else {
                 // native
-                return fn.call(call.value, ...node.arguments.map(argument => eval2(argument, scope)))
+                return fn.call(call._isVariable ? call.value : call, ...node.arguments.map(argument => eval2(argument, scope)))
             }
         } else if(isCallDirectly(_callee)) {
             const tag = _callee.name
@@ -329,33 +350,19 @@ const evalOperateMap = {
         }
     },
     'BinaryExpression': (node: ESTree.BinaryExpression, scope: Scope) => {
+        // TODO: 严格模式
+        if(0) return binaryExpressionStrict(node, scope)
+
         const { left, operator, right } = node
-        let leftVal, rightVal
         switch (operator) {
         case '+':
-            leftVal = getVal(left, scope)
-            if(typeof leftVal !== 'number' && typeof leftVal !== 'string') throw Error("binary expression left error")
-            rightVal = getVal(right, scope)
-            if(typeof rightVal !== 'number' && typeof rightVal !== 'string') throw Error("binary expression right error")
-            return (leftVal as number) + (rightVal as number)
+            return (getVal(left, scope) as number) + (getVal(right, scope) as number)
         case '-':
-            leftVal = getVal(left, scope)
-            if(typeof leftVal !== 'number' && typeof leftVal !== 'string') throw Error("binary expression left error")
-            rightVal = getVal(right, scope)
-            if(typeof rightVal !== 'number' && typeof rightVal !== 'string') throw Error("binary expression right error")
-            return (leftVal as number) - (rightVal as number)
+            return (getVal(left, scope) as number) - (getVal(right, scope) as number)
         case '/':
-            leftVal = getVal(left, scope)
-            if(typeof leftVal !== 'number') throw Error("binary expression left error")
-            rightVal = getVal(right, scope)
-            if(typeof rightVal !== 'number') throw Error("binary expression right error")
-            return (leftVal as number) / (rightVal as number)
+            return (getVal(left, scope) as number) / (getVal(right, scope) as number)
         case '*':
-            leftVal = getVal(left, scope)
-            if(typeof leftVal !== 'number') throw Error("binary expression left error")
-            rightVal = getVal(right, scope)
-            if(typeof rightVal !== 'number') throw Error("binary expression right error")
-            return (leftVal as number) * (rightVal as number)
+            return (getVal(left, scope) as number) * (getVal(right, scope) as number)
         case '===':
             return getVal(left, scope) === getVal(right, scope)
         case '==':
@@ -364,6 +371,8 @@ const evalOperateMap = {
             return getVal(left ,scope) < getVal(right, scope)
         case '>':
             return getVal(left, scope) > getVal(right, scope)
+        case 'instanceof':
+            return getVal(left, scope) instanceof getVal(right, scope)
         default:
             break
         }

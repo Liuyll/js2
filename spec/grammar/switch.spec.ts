@@ -4,7 +4,6 @@ import { expect } from 'chai'
 import { parseAST } from '../../src'
 
 describe('Switch Test', () => {
-    // a['b']
     it('switch', () => {
         const testCode = `
             let ret

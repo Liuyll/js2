@@ -1,16 +1,18 @@
 import 'mocha'
 
-import { expect } from 'chai';
+import { expect } from 'chai'
 import { parseAST } from '../../src'
 
 describe('Promise Test', () => {
     // a['b']
-    it('call', () => {
+    it('call', (done) => {
         const testCode = `
-            Promise.resolve(r => {
-                console.log(3)
-            })
+            new Promise(r => {
+                r()
+            }).then(r => done())
         `
-        expect(parseAST(testCode))
+        expect(parseAST(testCode, {
+            done
+        }))
     })
 })

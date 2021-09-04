@@ -12,6 +12,8 @@ const globals: nativeGlobal = {
     'String': String,
     'Array': Array,
     'Object': Object,
+    'Function': Function,
+    'Proxy': Proxy
 }
 
 export {

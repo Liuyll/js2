@@ -4,7 +4,6 @@ import { expect } from 'chai'
 import { parseAST } from '../../src'
 
 describe('Variable Test', () => {
-    // a['b']
     it('var', () => {
         const testCode = `
             var a = 10

@@ -4,7 +4,6 @@ import { expect } from 'chai'
 import { parseAST } from '../../src'
 
 describe('ArrowFunction Test', () => {
-    // a['b']
     it('block call', () => {
         const testCode = `
             const test = () => {
