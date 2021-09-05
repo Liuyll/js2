@@ -55,6 +55,19 @@ describe('MemberExpression Test', () => {
         expect(parseAST(testCode)).to.be.equal(1)
     })
 
+    it('nest object array 2', () => {
+        const testCode = `
+        const a = {
+            b: {
+                c: {
+                    d: 1
+                }
+            }
+        }
+        export default a.b.c.d`
+        expect(parseAST(testCode)).to.be.equal(1)
+    })
+
     it('new and get', () => {
         const testCode = `
         class A{
@@ -73,6 +86,43 @@ describe('MemberExpression Test', () => {
             }
         }
         export default A().prop
+    `
+        expect(parseAST(testCode)).to.be.equal(1)
+    })
+
+    it('static prop', () => {
+        const testCode = `
+        const A = () => {}
+        A.static = 'qwe'
+        export default A.static
+    `
+        expect(parseAST(testCode)).to.be.equal('qwe')
+    })
+
+    it('set prop', () => {
+        const testCode = `
+        const a = {
+            b: {
+                c: {}
+            }
+        }
+        a.b.c.d = 1
+        export default a.b.c.d
+    `
+        expect(parseAST(testCode)).to.be.equal(1)
+    })
+
+    it('set function prop', () => {
+        const testCode = `
+        const a = {
+            b: {
+                c: {}
+            }
+        }
+        a.b.c.d = function() {
+            return 1
+        }
+        export default a.b.c.d()
     `
         expect(parseAST(testCode)).to.be.equal(1)
     })

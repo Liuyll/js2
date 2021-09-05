@@ -1,5 +1,5 @@
-import { Variable, VariableKind } from './base/variable'
 import { globals } from './global'
+import { Variable, VariableKind } from './base/variable'
 
 enum SET_OPE_CODE {
     SET_CONST,

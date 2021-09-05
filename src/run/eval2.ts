@@ -1,6 +1,6 @@
 import * as ESTree from 'estree'
-import { Variable, VariableKind } from "./base/variable"
-import { getVal, isCallDirectly, isRecursiveMember, isVariable, transformStringTypeToEngineType, assignCallArguments, isNative } from './helper'
+import { isJs2Variable, Variable, VariableKind } from "./base/variable"
+import { getVal, isCallDirectly, isRecursiveMember, isVariable, transformStringTypeToEngineType, assignCallArguments, isNative, getWrapper } from './helper'
 import { FunctionArguments, IEvalExtraArguments, IEvalMap, IEvalMapExtra } from './interface'
 import { Scope, SCOPE_TYPE } from "./scope"
 import shallowCopy from 'shallow-copy'
@@ -45,13 +45,13 @@ const evalOperateMap = {
         scope.addMember(defaulted, new Variable(VariableKind.Const, defaulted, scope, ret.default))
     },
     /**
-     * function() {}
+     * const a = function() {}
      */
     'FunctionDeclaration': (node: ESTree.FunctionDeclaration, scope: Scope) => {
         const variable = scope.find(node.id.name)
         if(variable?.kind === VariableKind.Const) throw Error(`Function declaration conflict key: ${node.id.name}`)
         
-        const runScope = new Scope(scope)
+        const runScope = new Scope(scope, SCOPE_TYPE.FUNCTION)
         const arguments2:FunctionArguments = { length: node.params.length }
         node.params.reduce((sum, param, idx) => {
             if(isVariable(param)) sum[idx] = new Variable(VariableKind.Let, param.name, runScope, undefined)
@@ -84,7 +84,7 @@ const evalOperateMap = {
      * const a = () => ...
      */
     'ArrowFunctionExpression': (node: ESTree.ArrowFunctionExpression, scope: Scope) => {
-        const runScope = new Scope(scope)
+        const runScope = new Scope(scope, SCOPE_TYPE.FUNCTION)
         const arguments2:FunctionArguments = { length: node.params.length }
         node.params.reduce((sum, param, idx) => {
             if(isVariable(param)) sum[idx] = new Variable(VariableKind.Let, param.name, runScope, undefined)
@@ -102,6 +102,38 @@ const evalOperateMap = {
             if(node.body.type === 'BlockStatement') ret = eval2<'BlockStatement'>(node.body, runScope, true)
             else ret = eval2<'Computed'>(node.body, runScope)
 
+            funcStack.popStack()
+            return ret
+        }
+    },
+    /**
+     * function a() {}
+     * { o: function() {} }
+     * { o() {} }
+     */
+    'FunctionExpression': (node: ESTree.FunctionExpression, scope: Scope) => {
+        const runScope = new Scope(scope, SCOPE_TYPE.FUNCTION)
+        const arguments2:FunctionArguments = { length: node.params.length }
+        node.params.reduce((sum, param, idx) => {
+            if(isVariable(param)) sum[idx] = new Variable(VariableKind.Let, param.name, runScope, undefined)
+            // TODO: rest
+            return sum
+        }, arguments2)
+        runScope.addMember('arguments', new Variable(VariableKind.Const, 'arguments', runScope, arguments2))
+        
+        return function(...args) {
+            funcStack.addStack((node.id as ESTree.Identifier)?.name) // 匿名函数没name
+
+            assignCallArguments(Array.from(runScope.find('arguments')!.value) as Variable[], args, runScope)
+            if(this instanceof Scope) runScope.$this = this
+            else {
+                runScope.$this = Object.entries(this).reduce((scope, [key, cur]: [string, Variable]) => {
+                    scope.addMember(key, cur)
+                    return scope
+                }, new Scope(null))
+            }
+
+            const ret = eval2<'BlockStatement' | 'any'>(node.body, runScope, true)
             funcStack.popStack()
             return ret
         }
@@ -177,6 +209,7 @@ const evalOperateMap = {
         }, {})
     },
     'AssignmentExpression': (node: ESTree.AssignmentExpression, scope: Scope) => {
+        const val = eval2(node.right, scope)
         if(node.left.type === 'Identifier') {
             let val: Variable
             if((val = scope.find(node.left.name)!)) {
@@ -184,41 +217,16 @@ const evalOperateMap = {
             } else {
                 throw Error(`Error: Variable ${node.left.name} is not declaration`)
             }
-        }
-    },
-    /**
-     * function a() {}
-     */
-    'FunctionExpression': (node: ESTree.FunctionExpression, scope: Scope) => {
-        const runScope = new Scope(scope)
-        const arguments2:FunctionArguments = { length: node.params.length }
-        node.params.reduce((sum, param, idx) => {
-            if(isVariable(param)) sum[idx] = new Variable(VariableKind.Let, param.name, runScope, undefined)
-            // TODO: rest
-            return sum
-        }, arguments2)
-        runScope.addMember('arguments', new Variable(VariableKind.Const, 'arguments', runScope, arguments2))
-        
-        return function(...args) {
-            funcStack.addStack((node.id as ESTree.Identifier)?.name) // 匿名函数没name
-
-            assignCallArguments(Array.from(runScope.find('arguments')!.value) as Variable[], args, runScope)
-            if(this instanceof Scope) runScope.$this = this
-            else {
-                runScope.$this = Object.entries(this).reduce((scope, [key, cur]: [string, Variable]) => {
-                    scope.addMember(key, cur)
-                    return scope
-                }, new Scope(null))
-            }
-
-            const ret = eval2(node.body, runScope, true)
-            funcStack.popStack()
-            return ret
+        } else if(node.left.type === 'MemberExpression') {
+            const wrap = getWrapper(node.left, scope, true)
+            const property = eval2<'Identifier', 'IdentifierNoComputed'>(node.left.property, scope, !node.left.computed)
+            if(isJs2Variable(wrap)) wrap.setInstanceValue(property, val)
+            else wrap[property] = val
         }
     },
     'MemberExpression': <E>(node: ESTree.MemberExpression, scope: Scope, isCall = false): E extends IEvalMapExtra['MemberExpressionIsCall'] ? [CallObject: Variable, Property: Variable] : any => {
         let wrap: Variable
-        if(isRecursiveMember(node.object)) wrap = eval2(node.object, scope)
+        if(isRecursiveMember(node.object)) wrap = getWrapper(node.object, scope)
         else if(node.object.type === 'Identifier') {
             const tag = node.object.name
             wrap = scope.find(tag)
@@ -232,27 +240,31 @@ const evalOperateMap = {
         } 
 
         const property = eval2<'Identifier', 'IdentifierNoComputed'>(node.property, scope, !node.computed)
-        const value = wrap._isVariable ? wrap.property(property) : wrap[property]
+        const value = isJs2Variable(wrap) ? wrap.property(property) : wrap[property]
         if(isCall) return [wrap, value] as any
-        return value?._isVariable ? value.value : value
+        return isJs2Variable(value) ? value.value : value
     },
     'CallExpression': (node: ESTree.CallExpression, scope: Scope) => {
         const argumentsCopy = node.arguments.map(argument => shallowCopy(eval2(argument, scope)))
         const _callee = node.callee
         if(isRecursiveMember(_callee)) {
             const [call, fn] = eval2<'MemberExpression', 'MemberExpressionIsCall'>(_callee, scope, true) // MemberExpression
-            // 声明的变量
-            if(!isNative(call)) {
-                return fn.value.call(call.value, ...argumentsCopy)
-            } else {
+            // call和fn都必须是js2Variable
+            if(isNative(call) && isNative(fn)) {
                 // native
-                return fn.call(call._isVariable ? call.value : call, ...node.arguments.map(argument => eval2(argument, scope)))
+                return fn.call(call, ...node.arguments.map(argument => eval2(argument, scope)))
+            } else if(isNative(fn)) {
+                return fn.value.call(call.value, ...argumentsCopy)
+            } else if(isNative(call)){
+                return fn.value.call(call, ...argumentsCopy)
+            } else {
+                // both Js2Variable
+                return fn.value.call(call.value, ...argumentsCopy)
             }
         } else if(isCallDirectly(_callee)) {
             const tag = _callee.name
             const body = scope.find(tag)
 
-            // console.log(body, body.value)
             return body.value.call({}, ...argumentsCopy)
         }
     },
@@ -270,7 +282,7 @@ const evalOperateMap = {
         }
     },
     'BlockStatement': (node: ESTree.BlockStatement, scope: Scope, isFunction: boolean = false) => {
-        const blockScope = new Scope(scope, null, isFunction ? SCOPE_TYPE.FUNCTION : SCOPE_TYPE.BLOCK)
+        const blockScope = isFunction ? scope : new Scope(scope, null, SCOPE_TYPE.BLOCK)
         let _return
         let executeStatement = node.body
 

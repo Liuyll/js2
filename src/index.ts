@@ -41,7 +41,8 @@ const parseAST: IParseAST = (code: string, global : object = {}, scope: Scope | 
 }
 
 console.log(parseAST(`
-`))
+`
+))
 
 export {
     parseAST

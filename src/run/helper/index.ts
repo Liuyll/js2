@@ -40,6 +40,23 @@ const assignCallArguments = (runArguments: Variable[], instanceArguments: any[],
 }
 const isNative = (v: Variable) => v.kind === VariableKind.Native || !v._isVariable
 
+/**
+ * @param isAssign 赋值
+ */
+const getWrapper = (node: ESTree.MemberExpression, scope: Scope, isAssign = false) => {
+    let wrap: Variable
+    if(isRecursiveMember(node.object)) wrap = getWrapper(node.object, scope)
+    else if(node.object.type === 'Identifier') {
+        const tag = node.object.name
+        wrap = scope.find(tag)
+        if(!wrap) throw Error(`MemberExpression not exist variable ${tag}`)
+    }
+    if(isAssign) return wrap
+    const property = eval2<'Identifier', 'IdentifierNoComputed'>(node.property, scope, !node.computed)
+    const value = wrap._isVariable ? wrap.property(property) : wrap[property]
+    return value?._isVariable ? value.value : value
+}
+
 export {
     getVal,
     isCallDirectly,
@@ -47,5 +64,6 @@ export {
     isVariable,
     transformStringTypeToEngineType,
     assignCallArguments,
-    isNative
+    isNative,
+    getWrapper
 }

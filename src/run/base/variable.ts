@@ -7,7 +7,7 @@ enum VariableKind {
     Function,
     Native
 }
-// type VariableKind = 'let' | 'var' | 'const' | 'function' | 'native'
+
 class Variable {
     kind: VariableKind
     scope: Scope
@@ -34,7 +34,7 @@ class Variable {
             else if(typeof key === 'string' && !isNaN(Number(key)) && Number(key) < 4294967296) return this.value[Number(key)].value
         }
         if(Object.prototype.toString.call(this.value) === '[object Object]') return this.value[key]
-        return this.instanceValue
+        return this.instanceValue[key]
 
     }
 
@@ -58,11 +58,16 @@ class Variable {
     }
 }
 
+const isJs2Variable = (v: any): v is Variable => {
+    return v?._isVariable === true
+}
+
 declare interface Variable {
     call(this: any, ...argument: any[]) // 为兼容函数情况
 }
 
 export {
     Variable,
-    VariableKind
+    VariableKind,
+    isJs2Variable
 }

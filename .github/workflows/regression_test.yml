@@ -1,0 +1,33 @@
+name: Js2 Regression Test
+
+on: 
+  push:
+    branches:
+      - master
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node: [12,14]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          ref: main
+      - name: SetNode
+        uses: actions/setup-node@v1
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Install
+        run:
+          npm ci
+      - name: Test
+        run:
+          npm run test
+      - name: Build
+        run:
+          npm run build
