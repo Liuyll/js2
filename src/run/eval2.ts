@@ -118,6 +118,24 @@ const evalOperateMap = {
         runScope.addMember('arguments', new Variable(VariableKind.Const, 'arguments', runScope, arguments2))
         
         return function(...args) {
+            /**
+             * 支持generator
+             */
+            if(node.generator) {
+                const control = {
+                    next() {
+                        return {
+                            value: undefined,
+                            done: false
+                        }
+                    }
+                }
+
+                return {
+                    control
+                }
+            }
+
             funcStack.addStack((node.id as ESTree.Identifier)?.name) // 匿名函数没name
 
             assignCallArguments(Array.from(runScope.find('arguments')!.value) as Variable[], args, runScope)
@@ -276,6 +294,9 @@ const evalOperateMap = {
             variable.set(isAdd ? variable.value + 1 : variable.value - 1)
             return variable.value
         }
+    },
+    'YieldExpression': (node: ESTree.YieldExpression, scope: Scope) => {
+
     },
     'BlockStatement': (node: ESTree.BlockStatement, scope: Scope, isFunction: boolean = false) => {
         const blockScope = isFunction ? scope : new Scope(scope, null, SCOPE_TYPE.BLOCK)

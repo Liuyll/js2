@@ -41,13 +41,6 @@ const parseAST: IParseAST = (code: string, global : object = {}, scope: Scope | 
 }
 
 console.log(parseAST(`
-let j = 0
-for(let i = 0; i < 10; i++) {
-    console.log(i)
-    if(i === 3) continue
-    j++
-}
-export default j
 `
 ))
 
