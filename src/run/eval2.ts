@@ -4,12 +4,8 @@ import { getVal, isCallDirectly, isRecursiveMember, isVariable, transformStringT
 import { FunctionArguments, IEvalExtraArguments, IEvalMap, IEvalMapExtra } from './interface'
 import { Scope, SCOPE_TYPE } from "./scope"
 import shallowCopy from 'shallow-copy'
-import { funcStack } from './base/stack'
+import { forStack, funcStack } from './base/stack'
 import { binaryExpressionStrict } from './helper/strict'
-
-enum EVAL_OPE_COPE {
-    
-}
 
 const evalOperateMap = {
     'Program': (node: ESTree.Program, scope: Scope) => {
@@ -299,13 +295,29 @@ const evalOperateMap = {
     'ForStatement': (node: ESTree.ForStatement, scope: Scope) => {
         let { init, test, update, body } = node
         const forScope = new Scope(scope, SCOPE_TYPE.FOR)
+        forStack.addStack('')
 
         eval2(init, forScope)
         while(eval2(test, forScope)) {
             eval2(body, forScope)
+            if(forStack.isReturn) {
+                if(forStack.getCurrentStack()[2] === 'c') {
+                    forStack.isReturn = false
+                    eval2(update, forScope)
+                    continue
+                }
+                else break
+            }
             eval2(update, forScope)
         }
+        forStack.popStack()
     },  
+    'BreakStatement': (node: ESTree.BreakStatement, scope: Scope) => {
+        forStack.returnFunc('r')
+    },
+    'ContinueStatement': (node: ESTree.ContinueStatement, scope: Scope) => {
+        forStack.returnFunc('c')
+    },
     'ReturnStatement': (node: ESTree.ReturnStatement, scope: Scope) => {
         if(node.argument === null) return funcStack.returnFunc(undefined)
         const ret = eval2<'Computed'>(node.argument, scope)
@@ -408,7 +420,7 @@ const evalOperateMap = {
 }
 
 const eval2 = <T extends keyof IEvalMap = 'any', E extends keyof IEvalMapExtra = 'any', P extends keyof IEvalExtraArguments = 'any'>(ast: ESTree.Node, scope: Scope, ...extra: IEvalExtraArguments[P][]): IEvalMap<E>[T] => {
-    if(funcStack.isReturn) return
+    if(funcStack.isReturn || forStack.isReturn) return
     return evalOperateMap[ast.type](ast, scope, ...extra)
 }
 
