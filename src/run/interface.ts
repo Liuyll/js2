@@ -11,6 +11,8 @@ interface IEvalMapExtra {
     any: any
 }
 
+type IsFunctionBlock = boolean
+
 interface IEvalMap<T = any> {
     'MemberExpression': T extends 'MemberExpressionIsCall' ? [CallObject: Variable, Property: Variable] : any
     'Identifier': T extends IEvalMapExtra['IdentifierNoComputed'] ? string : Variable
@@ -24,7 +26,7 @@ interface IEvalMap<T = any> {
 
 interface IEvalExtraArguments {
     'VariableDeclarator': VariableKind
-    'BlockStatement': boolean
+    'BlockStatement': IsFunctionBlock
     'any': any
 }
 

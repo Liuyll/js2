@@ -30,10 +30,4 @@ class FuncStack {
     }
 }
 
-const funcStack = new FuncStack()
-const forStack = new FuncStack()
-
-export {
-    funcStack,
-    forStack
-}
+export default FuncStack

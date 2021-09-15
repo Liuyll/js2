@@ -41,6 +41,19 @@ const parseAST: IParseAST = (code: string, global : object = {}, scope: Scope | 
 }
 
 console.log(parseAST(`
+    function *test() {
+        for(let i = 0; i < 5; i++) {
+            yield i
+        }
+    }
+    const a = test()
+    console.log(a.next())
+    console.log(a.next())
+    console.log(a.next())
+    console.log(a.next())
+    console.log(a.next())
+    console.log(a.next())
+    console.log(a.next())
 `
 ))
 
