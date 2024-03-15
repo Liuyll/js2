@@ -31,7 +31,6 @@ class Generator {
     }
 
     yield(val: any) {
-        console.log('val:', val)
         this.isYield = true
         this.yieldValue = val
     }

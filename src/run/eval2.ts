@@ -199,6 +199,10 @@ const evalOperateMap = {
             scope.addMember(tag, _variable)
         } else scope.addMember(tag, _variable)
     },
+    'AwaitExpression': (node: ESTree.AwaitExpression, scope: Scope) => {
+        const generator = getCurrentGenerator()
+        generator.yield(eval2(node.argument, scope))
+    },
     'NewExpression': (node: ESTree.NewExpression, scope: Scope) => {
         const constructor = eval2(node.callee, scope, false, true)
         return new constructor.value(...Array.from(node.arguments).map(a => eval2(a, scope)))
